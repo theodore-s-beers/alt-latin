@@ -1,0 +1,10 @@
+# Build artifacts
+/build/
+/Alt-Latin.bundle/
+/icon/Alt-Latin.iconset/
+
+# Python cache
+__pycache__/
+
+# macOS metadata
+.DS_Store
