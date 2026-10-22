@@ -24,6 +24,5 @@ Mappings and metadata can be edited in `src/`. The build script will refuse to o
 The icon file used by the build is `icon/Alt-Latin.icns`. That is defined in turn by `icon/Alt-Latin.svg`. After any edits to the SVG, regenerate the icon set:
 
 ```sh
-swift icon/rasterize.swift icon/Alt-Latin.svg icon/Alt-Latin.iconset
-iconutil -c icns -o icon/Alt-Latin.icns icon/Alt-Latin.iconset
+swift icon/rasterize.swift icon/Alt-Latin.svg icon/Alt-Latin.iconset icon/Alt-Latin.icns
 ```

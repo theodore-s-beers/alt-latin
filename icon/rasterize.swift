@@ -64,19 +64,23 @@ let radius = CGFloat(Double(delegate.rect["rx"]!)!)
 let space = CGColorSpace(name: CGColorSpace.sRGB)!
 let slots = [
   ("icon_16x16", 16), ("icon_16x16@2x", 32), ("icon_32x32", 32), ("icon_32x32@2x", 64),
-  ("icon_128x128", 128), ("icon_128x128@2x", 256), ("icon_256x256", 256), ("icon_256x256@2x", 512),
+  ("icon_128x128", 128), ("icon_128x128@2x", 256), ("icon_256x256", 256),
+  ("icon_256x256@2x", 512),
   ("icon_512x512", 512), ("icon_512x512@2x", 1024),
 ]
+var smallIcons = [String: Data]()
 for (name, size) in slots {
   let ctx = CGContext(
-    data: nil, width: size, height: size, bitsPerComponent: 8, bytesPerRow: size * 4, space: space,
+    data: nil, width: size, height: size, bitsPerComponent: 8, bytesPerRow: size * 4,
+    space: space,
     bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
   ctx.scaleBy(x: CGFloat(size) / 512, y: CGFloat(size) / 512)
   ctx.setFillColor(
     CGColor(
       colorSpace: space,
       components: [
-        CGFloat((rgb >> 16) & 255) / 255, CGFloat((rgb >> 8) & 255) / 255, CGFloat(rgb & 255) / 255,
+        CGFloat((rgb >> 16) & 255) / 255, CGFloat((rgb >> 8) & 255) / 255,
+        CGFloat(rgb & 255) / 255,
         1,
       ])!)
   ctx.addPath(
@@ -87,10 +91,47 @@ for (name, size) in slots {
   ctx.setFillColor(CGColor(gray: 1, alpha: 1))
   ctx.addPath(path)
   ctx.fillPath()
+  if name == "icon_16x16" || name == "icon_32x32" {
+    // Small ARGB icons use premultiplied channels, just like this context.
+    let pixels = ctx.data!.assumingMemoryBound(to: UInt8.self)
+    var packed = Data("ARGB".utf8)
+    for channel in [3, 0, 1, 2] {
+      for start in stride(from: 0, to: size * size, by: 128) {
+        let count = min(128, size * size - start)
+        packed.append(UInt8(count - 1))
+        for pixel in start..<(start + count) {
+          packed.append(pixels[pixel * 4 + channel])
+        }
+      }
+    }
+    // The macOS decoder needs a trailing byte after the final literal run.
+    packed.append(0)
+    smallIcons[name] = packed
+  }
   let dest = CGImageDestinationCreateWithURL(
-    folder.appendingPathComponent(name + ".png") as CFURL, UTType.png.identifier as CFString, 1, nil
+    folder.appendingPathComponent(name + ".png") as CFURL, UTType.png.identifier as CFString, 1,
+    nil
   )!
   CGImageDestinationAddImage(dest, ctx.makeImage()!, nil)
   precondition(CGImageDestinationFinalize(dest))
 }
 print("Rendered 10 PNG representations directly from SVG; no font dependencies.")
+
+// Pack small icons as premultiplied ARGB; preserve PNGs for the other slots.
+if CommandLine.arguments.count > 3 {
+  let types = ["ic04", "ic11", "ic05", "ic12", "ic07", "ic13", "ic08", "ic14", "ic09", "ic10"]
+  func chunk(_ type: String, _ payload: Data) -> Data {
+    var result = Data(type.utf8)
+    var length = UInt32(payload.count + 8).bigEndian
+    withUnsafeBytes(of: &length) { result.append(contentsOf: $0) }
+    result.append(payload)
+    return result
+  }
+  var contents = Data()
+  for ((name, _), type) in zip(slots, types) {
+    let png = try Data(contentsOf: folder.appendingPathComponent(name + ".png"))
+    contents.append(chunk(type, smallIcons[name] ?? png))
+  }
+  try chunk("icns", contents).write(to: URL(fileURLWithPath: CommandLine.arguments[3]))
+  print("Packed ICNS with premultiplied small icons and PNG representations.")
+}
